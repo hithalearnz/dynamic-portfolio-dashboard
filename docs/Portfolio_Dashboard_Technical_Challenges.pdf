@@ -1,0 +1,73 @@
+TECHNICAL CHALLENGES & SOLUTIONS
+Dynamic Portfolio Dashboard
+Next.js • React • TypeScript • Tailwind CSS • Node.js
+Technical document for the Full Stack Engineer assignment
+1. Project Overview
+Objective. The application implements a dynamic investment portfolio dashboard that reads the provided portfolio holdings and combines them with market and fundamental data. The assignment requires CMP from Yahoo Finance, P/E Ratio and Latest Earnings from Google Finance, periodic updates, sector-level summaries, visual Gain/Loss indicators, responsive behavior, and graceful handling of data-source limitations.
+Implemented result. The dashboard contains 26 active holdings grouped into six sectors: Financial Sector, Tech, Consumer, Power, Pipe Sector, and Others. Portfolio calculations are derived from the holding-level purchase price, quantity, and fetched CMP values.
+2. Architecture and Data Flow
+1. The portfolio records are stored as structured TypeScript data based on the supplied Excel sheet.
+2. The Next.js server route at /api/portfolio retrieves external data without exposing server-side fetching logic to the browser.
+3. Yahoo Finance is used for Current Market Price (CMP).
+4. Google Finance is parsed for P/E Ratio and Earnings per Share (used for the Latest Earnings column).
+5. Source data is cached separately: CMP for 15 seconds and fundamentals for 5 minutes.
+6. The API merges the source values with the portfolio records and returns a consistent JSON structure.
+7. The client dashboard recalculates Present Value, Gain/Loss, and portfolio percentages from the API response.
+8. The frontend refreshes the portfolio every 15 seconds and also provides a manual refresh action.
+Core formulas
+Investment = Purchase Price × Quantity
+Present Value = CMP × Quantity
+Gain/Loss = Present Value − Investment
+Portfolio % = (Investment / Total Investment) × 100
+3. Technical Challenges and Solutions
+Challenge	Solution Implemented	Result / Trade-off
+Unofficial external data sources	Used yahoo-finance2 for CMP and server-side Google Finance page fetching with Cheerio for fundamentals.	Avoids client-side scraping. External page changes can still break parsers, so the dashboard treats missing values safely.
+NSE/BSE symbol differences	Mapped Indian listings to Yahoo symbols using .NS/.BO and Google symbols using NSE/BOM formats. Added Yahoo fallback symbols for many BSE holdings.	Improved coverage across the 26 holdings without changing the portfolio exchange labels from the source data.
+Rate limiting and repeated requests	Separated CMP and fundamentals caches. CMP is cached for 15 seconds; Google fundamentals are cached for 5 minutes.	The browser can refresh every 15 seconds without forcing Google fundamentals to be requested every time.
+Asynchronous external calls	The API performs external requests asynchronously and merges the results into the portfolio schema.	Keeps the API responsive while handling independent source failures.
+Unavailable data	External-source failures are converted to null values rather than failing the whole portfolio response.	A single unavailable security does not break the dashboard; affected cells show “Unavailable”.
+15-second live updates	The client uses setInterval for automatic refresh and a separate one-second countdown for the UI. Cleanup clears both timers.	The dashboard continuously refreshes without accumulating timers during component unmount/remount.
+Data transformation	Source fields are normalized into a shared Stock type and calculations are isolated in calculations.ts.	The UI remains simpler and calculation logic is reusable and testable.
+Responsive wide table	The table is wrapped in an overflow-x-auto container and uses responsive grid layouts for summary/sector cards.	All required columns remain available on smaller screens without compressing them into unreadable widths.
+Parser fragility	Google Finance extraction uses DOM label matching plus text/quarterly EPS fallbacks.	Improves resilience, but scraped markup remains subject to future changes.
+4. Data Source Strategy
+•	Yahoo Finance: Current Market Price (CMP). The assignment notes that Yahoo Finance does not provide a public official API for this use case, so an unofficial library is used.
+•	Google Finance: P/E Ratio and Latest Earnings. The implementation fetches the Google Finance page server-side and parses the displayed values.
+•	Latest Earnings interpretation: the dashboard uses the Earnings per Share (EPS) value exposed by Google Finance for the Latest Earnings column. This was chosen because the assignment names Latest Earnings but does not define a separate earnings metric.
+•	Unavailable values are preserved as unavailable when the source does not return usable information. No market values are hardcoded into the live-data fields.
+5. API and Caching Design
+Endpoint: GET /api/portfolio
+Response model: Each returned stock contains the original portfolio fields plus cmp, peRatio, and latestEarnings.
+Cache	Duration	Reason
+CMP	15 seconds	Matches the requested refresh interval while limiting repeated Yahoo requests.
+P/E + Latest Earnings	5 minutes	Fundamentals change less frequently and do not need 15-second requests.
+6. Error Handling and Resilience
+•	If Yahoo Finance does not return a valid market price, CMP is stored as null and the UI displays Unavailable for CMP, Present Value, and Gain/Loss for that holding.
+•	If Google Finance parsing fails for a security, P/E Ratio and/or Latest Earnings remain null while other holdings continue to load.
+•	The API returns a controlled error response when the portfolio endpoint itself fails.
+•	The dashboard provides an error state and a retry action when the initial portfolio request cannot be completed.
+•	The interface displays a source-availability disclaimer because unofficial/scraped data can vary in accuracy or availability.
+7. Performance Considerations
+•	Caching reduces the number of external requests generated by a 15-second client refresh cycle.
+•	Calculations are kept separate from rendering, so the UI components do not contain duplicated business logic.
+•	The API performs source work on the server rather than sending scraping requests directly from the browser.
+•	The wide table is scrollable instead of forcing 11 required columns into very small widths.
+•	The current cache is in-memory and process-local. A shared cache such as Redis would be a future improvement for a multi-instance deployment.
+8. Verification Performed
+•	The portfolio API returned success: true with 26 holdings.
+•	Yahoo CMP values were successfully retrieved for 25 of the 26 holdings; Savani Financials remained unavailable from the current source path.
+•	Google fundamentals were successfully retrieved for most holdings, with a small number of source-level unavailable fields remaining.
+•	Investment, Present Value, Gain/Loss, and Portfolio % calculations were verified against the source purchase price and quantity data.
+•	The dashboard refreshed automatically on the 15-second interval and exposed a manual refresh control.
+•	The production build completed successfully with the Next.js application and /api/portfolio route.
+9. Known Limitations
+•	Yahoo Finance and Google Finance are unofficial/scraped sources for this implementation and may change their response structure or availability.
+•	Some securities may not expose complete CMP or fundamental data through the chosen source path.
+•	The process-local cache is appropriate for this assignment/demo but is not shared across multiple deployment instances.
+•	Market values can change between refreshes and can differ from other market-data providers due to timing or source differences.
+10. Deployment Notes
+1. Install dependencies with npm install.
+2. Run npm run dev for local development and verify / and /api/portfolio.
+3. Run npm run build to validate the production build before deployment.
+4. Deploy the Next.js application to Vercel or another compatible platform.
+5. After deployment, verify the public dashboard, the /api/portfolio endpoint, refresh behavior, and unavailable-data handling.
